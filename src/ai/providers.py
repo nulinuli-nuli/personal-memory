@@ -158,10 +158,28 @@ class AnthropicProvider(AIProvider):
             # Parse JSON from the response
             # Anthropic might wrap JSON in markdown code blocks
             content = content.strip()
+
+            # Handle various markdown formats
             if "```json" in content:
                 content = content.split("```json")[1].split("```")[0].strip()
             elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
+                # Find the content between first ``` and next ```
+                lines = content.split("\n")
+                in_code_block = False
+                json_lines = []
+                for line in lines:
+                    if line.strip().startswith("```"):
+                        in_code_block = not in_code_block
+                        continue
+                    if in_code_block:
+                        json_lines.append(line)
+                if json_lines:
+                    content = "\n".join(json_lines).strip()
+                else:
+                    # Fallback: just split by ```
+                    parts = content.split("```")
+                    if len(parts) >= 2:
+                        content = parts[1].strip()
 
             parsed = json.loads(content)
             print(f"    解析结果: {parsed}", flush=True)

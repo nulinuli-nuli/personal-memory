@@ -231,3 +231,56 @@ class RecordService:
             notes=parsed.get("notes"),
             raw_text=text,
         )
+
+    def get_db_schema_for_ai(self) -> str:
+        """
+        Generate database schema documentation for AI use.
+
+        Returns:
+            Database schema as markdown string
+        """
+        return """
+**Database Schema**
+
+**finance_records** - 财务记录
+- id (INTEGER, PK)
+- user_id (INTEGER, FK)
+- type (TEXT) - 'income' or 'expense'
+- amount (NUMERIC(10,2)) - 金额
+- category (TEXT) - 分类: 餐饮, 交通, 购物, 娱乐, 住房, 医疗, 教育, 工资, 投资, 其他
+- description (TEXT) - 描述
+- record_date (DATE) - 记录日期
+
+**health_records** - 健康记录
+- id (INTEGER, PK)
+- user_id (INTEGER, FK)
+- record_date (DATE, UNIQUE)
+- sleep_hours (NUMERIC(4,2)) - 睡眠时长
+- sleep_quality (TEXT) - 睡眠质量: 优, 良, 中, 差
+- wake_time (TIME) - 起床时间
+- bed_time (TIME) - 睡觉时间
+- mood (TEXT) - 心情
+
+**work_records** - 工作记录
+- id (INTEGER, PK)
+- user_id (INTEGER, FK)
+- record_date (DATE)
+- task_name (TEXT) - 任务名称
+- duration_hours (NUMERIC(5,2)) - 工作时长
+- value_description (TEXT) - 价值描述
+- tags (TEXT) - 标签
+- status (TEXT) - 状态
+
+**leisure_records** - 休闲记录
+- id (INTEGER, PK)
+- user_id (INTEGER, FK)
+- record_date (DATE)
+- activity (TEXT) - 活动名称
+- duration_hours (NUMERIC(5,2)) - 时长
+- enjoyment_score (INTEGER) - 愉悦度 1-5
+
+Notes:
+- Always filter by user_id = {user_id}
+- Date format: 'YYYY-MM-DD'
+- Use SQLite date functions: date(), date('now', '-7 days')
+"""

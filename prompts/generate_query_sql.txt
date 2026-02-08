@@ -1,0 +1,94 @@
+Generate a SELECT query to answer the user's question.
+
+QUESTION: {text}
+USER ID: {user_id}
+TODAY: {today}
+
+DATABASE SCHEMA:
+```markdown
+{schema}
+```
+
+CRITICAL SAFETY RULES:
+1. ONLY generate SELECT queries
+2. Always filter by user_id = {user_id}
+3. Use proper date comparisons
+4. ORDER BY record_date DESC, id DESC
+5. Limit results (default: 100)
+
+TIME RANGE FILTERS (SQLite):
+- "今天": record_date = '{today}'
+- "昨天": record_date = date('{today}', '-1 day')
+- "本周": record_date >= date('{today}', '-' || strftime('%w', '{today}') || ' days')
+- "上周": record_date >= date('{today}', '-' || (strftime('%w', '{today}') + 7) || ' days')
+           AND record_date < date('{today}', '-' || strftime('%w', '{today}') || ' days')
+- "本月": record_date >= date('{today}', 'start of month')
+- "上月": record_date >= date('{today}', 'start of month', '-1 month')
+           AND record_date < date('{today}', 'start of month')
+- "最近X天": record_date >= date('{today}', '-X days')
+- "最近X周": record_date >= date('{today}', '-7*X days')
+
+RESPOND ONLY WITH A VALID JSON OBJECT (no markdown, no code blocks, no additional text):
+{{
+  "sql": "SELECT query here",
+  "explanation": "Plain language explanation",
+  "chart_type": "table" or "bar" or "line" or "pie" or null,
+  "summary": "One-sentence summary"
+}}
+
+Examples:
+Input: "查询本周财务记录"
+Output: {{
+  "sql": "SELECT record_date, type, amount, category, description FROM finance_records WHERE user_id = {{user_id}} AND record_date >= date('{{today}}', '-' || strftime('%w', '{{today}}') || ' days') ORDER BY record_date DESC LIMIT 100",
+  "explanation": "Get all finance records from this week",
+  "chart_type": "table",
+  "summary": "Financial transactions this week"
+}}
+
+Input: "工作超过4小时的任务"
+Output: {{
+  "sql": "SELECT record_date, task_name, duration_hours FROM work_records WHERE user_id = {{user_id}} AND duration_hours > 4 ORDER BY duration_hours DESC",
+  "explanation": "Find all work tasks longer than 4 hours",
+  "chart_type": "bar",
+  "summary": "Tasks that took more than 4 hours"
+}}
+
+Input: "本月餐饮和交通总支出"
+Output: {{
+  "sql": "SELECT category, SUM(amount) as total FROM finance_records WHERE user_id = {{user_id}} AND type = 'expense' AND category IN ('餐饮', '交通') AND record_date >= date('{{today}}', 'start of month') GROUP BY category",
+  "explanation": "Total spending on dining and transportation this month",
+  "chart_type": "pie",
+  "summary": "Dining and transportation expenses this month"
+}}
+
+Input: "睡眠质量为优的天数"
+Output: {{
+  "sql": "SELECT COUNT(*) as count FROM health_records WHERE user_id = {{user_id}} AND sleep_quality = '优'",
+  "explanation": "Count days with excellent sleep quality",
+  "chart_type": null,
+  "summary": "Days with excellent sleep quality"
+}}
+
+Input: "今天都做了什么"
+Output: {{
+  "sql": "SELECT 'finance' as type, record_date, description || ' ¥' || amount as detail FROM finance_records WHERE user_id = {{user_id}} AND record_date = '{{today}}' UNION ALL SELECT 'work' as type, record_date, task_name || ' (' || duration_hours || 'h)' as detail FROM work_records WHERE user_id = {{user_id}} AND record_date = '{{today}}' UNION ALL SELECT 'leisure' as type, record_date, activity || ' (' || duration_hours || 'h)' as detail FROM leisure_records WHERE user_id = {{user_id}} AND record_date = '{{today}}' ORDER BY record_date DESC",
+  "explanation": "All activities today across all categories",
+  "chart_type": "table",
+  "summary": "All your activities today"
+}}
+
+Input: "上周工作总时长"
+Output: {{
+  "sql": "SELECT SUM(duration_hours) as total_hours FROM work_records WHERE user_id = {{user_id}} AND record_date >= date('{{today}}', '-' || (strftime('%w', '{{today}}') + 7) || ' days') AND record_date < date('{{today}}', '-' || strftime('%w', '{{today}}') || ' days')",
+  "explanation": "Total work hours last week",
+  "chart_type": null,
+  "summary": "Total work hours last week"
+}}
+
+Input: "最近7天的财务支出"
+Output: {{
+  "sql": "SELECT record_date, category, amount, description FROM finance_records WHERE user_id = {{user_id}} AND type = 'expense' AND record_date >= date('{{today}}', '-7 days') ORDER BY record_date DESC LIMIT 100",
+  "explanation": "Expenses in the last 7 days",
+  "chart_type": "table",
+  "summary": "Expenses from the last 7 days"
+}}

@@ -1,10 +1,12 @@
-"""Feishu event handlers with smart intent recognition."""
+"""Feishu event handlers with AI-driven intent recognition."""
 import asyncio
 import nest_asyncio  # Allow nested event loops
 from datetime import date, datetime, timedelta
 from decimal import Decimal
-from typing import Any
+from typing import Any, Dict
 from dataclasses import dataclass
+from collections import deque
+import hashlib
 
 from sqlalchemy.orm import Session
 
@@ -12,11 +14,76 @@ from src.config import settings
 from src.core.models import FinanceRecord, HealthRecord, WorkRecord, LeisureRecord
 from src.core.database import get_db
 from src.services.record_service import RecordService
+from src.services.query_service import QueryService, SQLSafetyError
 from src.repositories.user_repo import UserRepository
 from src.ai.parser import TextParser
 
 # Apply nest_asyncio patch globally
 nest_asyncio.apply()
+
+
+# ============================================================================
+# MESSAGE DEDUPLICATION - Prevent duplicate processing
+# ============================================================================
+
+class MessageDeduplicator:
+    """Prevent processing duplicate messages within a time window."""
+
+    def __init__(self, window_seconds: int = 10, max_size: int = 1000):
+        """
+        Initialize deduplicator.
+
+        Args:
+            window_seconds: Time window to consider messages as duplicates (default: 10s)
+            max_size: Maximum number of message hashes to store
+        """
+        self.window_seconds = window_seconds
+        self.max_size = max_size
+        self.message_hashes = deque()  # List of (hash, timestamp)
+
+    def _hash_message(self, sender_id: str, text: str) -> str:
+        """Generate hash for message deduplication."""
+        content = f"{sender_id}:{text}:{datetime.now().strftime('%Y%m%d%H')}"
+        return hashlib.md5(content.encode()).hexdigest()
+
+    def is_duplicate(self, sender_id: str, text: str) -> bool:
+        """
+        Check if message is a duplicate.
+
+        Args:
+            sender_id: Sender ID
+            text: Message text
+
+        Returns:
+            True if duplicate, False otherwise
+        """
+        message_hash = self._hash_message(sender_id, text)
+        now = datetime.now()
+
+        # Clean old hashes
+        cutoff_time = now - timedelta(seconds=self.window_seconds)
+        while self.message_hashes and self.message_hashes[0][1] < cutoff_time:
+            self.message_hashes.popleft()
+
+        # Check if hash exists in window
+        for existing_hash, _ in self.message_hashes:
+            if existing_hash == message_hash:
+                # Simply log and skip, no other logic
+                print(f"⚠️  重复消息，已跳过 (2分钟内)", flush=True)
+                return True
+
+        # Add new hash
+        self.message_hashes.append((message_hash, now))
+
+        # Prevent unlimited growth
+        if len(self.message_hashes) > self.max_size:
+            self.message_hashes.popleft()
+
+        return False
+
+
+# Global deduplicator instance (2-minute window for duplicate detection)
+message_deduplicator = MessageDeduplicator(window_seconds=120)
 
 
 # Minimal MessageEvent for backward compatibility
@@ -32,6 +99,11 @@ class MessageEvent:
     sender: FeishuUser
     content: str
 
+
+# ============================================================================
+# LEGACY KEYWORD-BASED INTENT RECOGNITION
+# These are retained as fallback when AI fails
+# ============================================================================
 
 # Query intent keywords
 QUERY_KEYWORDS = [
@@ -65,10 +137,10 @@ class FeishuEventHandler:
 
     def handle_message_by_text(self, sender_id: str, text: str) -> str:
         """
-        Handle text message (SDK-compatible entry point).
+        Handle text message using AI-driven intent recognition (SDK-compatible entry point).
 
         This is the main entry point for SDK events.
-        It extracts user and delegates to the appropriate handler.
+        It uses AI to classify intent and routes to appropriate handler.
 
         Args:
             sender_id: Feishu user ID
@@ -77,19 +149,18 @@ class FeishuEventHandler:
         Returns:
             Response message
         """
+        # Check for duplicate messages
+        if message_deduplicator.is_duplicate(sender_id, text):
+            return None  # Return None to indicate duplicate (no response)
+
         print("=" * 60, flush=True)
         print(f"📨 [1/6] 收到消息", flush=True)
-        print(f"  发送者 ID: {sender_id}", flush=True)
-        print(f"  消息内容: {text}", flush=True)
-        print("=" * 60, flush=True)
+        print(f"  发送者: {sender_id}", flush=True)
+        print(f"  内容: {text}", flush=True)
 
         # Get or create user
         print(f"🔍 [2/6] 查询/创建用户...", flush=True)
         user = self.user_repo.get_or_create_by_feishu(sender_id)
-        print(f"  ✓ 用户 ID: {user.id}", flush=True)
-        print(f"  ✓ 用户名: {user.username}", flush=True)
-
-        # Create service instance
         service = RecordService(self.db, user.id)
 
         # Helper to run async code (works with nest_asyncio)
@@ -100,21 +171,47 @@ class FeishuEventHandler:
             except RuntimeError:
                 return asyncio.run(coro)
 
-        # Smart intent recognition (reuse existing logic)
-        print(f"🎯 [3/6] 意图识别...", flush=True)
+        # AI intent recognition
+        print(f"🎯 [3/6] AI 意图识别...", flush=True)
 
+        # Check for legacy commands first
         if text.startswith("/"):
-            print(f"  → 识别为: 命令 (以 / 开头)", flush=True)
+            print(f"  → 识别为: 传统命令 (以 / 开头)", flush=True)
             response = run_async(self.handle_command_by_service(service, text))
-        elif self._is_query_intent(text):
-            print(f"  → 识别为: 查询 (包含查询关键词)", flush=True)
-            response = run_async(self.handle_query_by_service(service, text))
-        else:
-            print(f"  → 识别为: 记录 (默认)", flush=True)
-            response = run_async(self.handle_record_by_service(service, text))
+            print(f"📤 [6/6] 准备发送回复", flush=True)
+            print("=" * 60, flush=True)
+            return response
+
+        try:
+            intent_result = self.parser.classify_intent(text)
+            intent = intent_result["intent"]
+            confidence = intent_result["confidence"]
+
+            print(f"  → 意图: {intent} (置信度: {confidence:.2f})", flush=True)
+            print(f"  → 记录类型: {intent_result.get('record_type') or '通用'}", flush=True)
+            print(f"  → 推理: {intent_result['reasoning']}", flush=True)
+
+            # Route based on intent
+            if intent == "query":
+                response = run_async(self.handle_query_by_service(service, text, intent_result))
+            elif intent == "add_record":
+                # Low confidence handling
+                if confidence < 0.6:
+                    return "❓ 不太确定您的意图，请换个说法试试\n\n您可以：\n• 记录数据：今天花了50块\n• 查询数据：查询本周花费"
+                response = run_async(self.handle_record_by_service(service, text, intent_result))
+            else:
+                # Unknown intent, fallback to traditional method
+                print(f"  → 未知意图，回退到关键词匹配...", flush=True)
+                response = run_async(self._fallback_handler(service, text))
+
+        except Exception as e:
+            print(f"  ✗ AI 处理失败: {e}", flush=True)
+            print(f"  → 回退到传统处理...", flush=True)
+            import traceback
+            traceback.print_exc()
+            response = run_async(self._fallback_handler(service, text))
 
         print(f"📤 [6/6] 准备发送回复", flush=True)
-        print(f"  回复内容: {response}", flush=True)
         print("=" * 60, flush=True)
 
         return response
@@ -220,37 +317,58 @@ class FeishuEventHandler:
         service = RecordService(self.db, user.id)
         return await self.handle_command_by_service(service, command)
 
-    async def handle_query_by_service(self, service: RecordService, query: str) -> str:
+    async def handle_query_by_service(
+        self,
+        service: RecordService,
+        query: str,
+        intent_result: Dict[str, Any] | None = None
+    ) -> str:
         """
-        Handle AI-powered smart query (with service).
+        Use AI to generate SQL and execute query.
 
         Args:
             service: RecordService instance
             query: Query text
+            intent_result: Pre-classified intent result (optional)
 
         Returns:
             Query result
         """
         user_id = service.user_id
-        print(f"🔍 [4/6] 解析查询意图...", flush=True)
+        print(f"🔍 [4/6] AI 生成查询 SQL...", flush=True)
 
-        # Parse query using AI
         try:
-            parsed = self._parse_query_intent(query)
-            print(f"  → 查询解析结果:", flush=True)
-            print(f"    - 记录类型: {parsed.get('record_type') or '全部'}", flush=True)
-            print(f"    - 时间范围: {parsed.get('start_date')} 至 {parsed.get('end_date')}", flush=True)
-            print(f"    - 查询类型: {parsed.get('query_type')}", flush=True)
-            print(f"    - 分类: {parsed.get('category') or '不限'}", flush=True)
-        except Exception as e:
-            print(f"  ✗ 查询解析失败: {e}", flush=True)
-            return f"❌ 查询解析失败: {str(e)}\n\n请尝试用更简单的方式描述，例如：\n• 查询本周花费\n• 今天的工作记录"
+            # Get database schema
+            schema = service.get_db_schema_for_ai()
 
-        print(f"📊 [5/6] 执行数据库查询...", flush=True)
-        # Execute query based on parsed intent
-        result = await self._execute_query(user_id, parsed)
-        print(f"  ✓ 查询完成，结果长度: {len(result)} 字符", flush=True)
-        return result
+            # AI generates SQL
+            query_result = self.parser.generate_query_sql(query, user_id, schema)
+            print(f"  → 生成 SQL: {query_result['sql'][:80]}...", flush=True)
+            print(f"  → 说明: {query_result['explanation']}", flush=True)
+
+            # Safe execution
+            print(f"📊 [5/6] 执行查询...", flush=True)
+            query_service = QueryService(self.db)
+            rows = query_service.execute_query(query_result['sql'], user_id)
+
+            # Format results
+            result = query_service.format_results(rows, query_result)
+            print(f"  ✓ 查询完成，{len(rows)} 条结果", flush=True)
+
+            return result
+
+        except SQLSafetyError as e:
+            print(f"  ✗ SQL 安全检查失败: {e}", flush=True)
+            return f"❌ 查询被安全策略阻止: {str(e)}\n\n请尝试简化查询条件"
+
+        except Exception as e:
+            print(f"  ✗ AI 查询失败: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
+
+            # Fallback to traditional query
+            print(f"  → 回退到传统查询...", flush=True)
+            return await self._fallback_query(user_id, query)
 
     async def handle_query(self, event: MessageEvent, query: str) -> str:
         """
@@ -548,33 +666,46 @@ class FeishuEventHandler:
             return f"({start_date} 至 {end_date})"
         return ""
 
-    async def handle_record_by_service(self, service: RecordService, text: str) -> str:
+    async def handle_record_by_service(
+        self,
+        service: RecordService,
+        text: str,
+        intent_result: Dict[str, Any] | None = None
+    ) -> str:
         """
-        Handle adding a new record (with service).
+        Use AI to detect record type and add record.
 
         Args:
             service: RecordService instance
             text: Record text
+            intent_result: Pre-classified intent result (optional)
 
         Returns:
             Confirmation message
         """
-        print(f"🤖 [4/6] AI 解析开始...", flush=True)
-
-        # Detect record type by keywords
-        record_type = self._detect_record_type(text)
-        print(f"  → 检测到记录类型: {record_type or '未知'}", flush=True)
+        print(f"🤖 [4/6] AI 解析记录类型...", flush=True)
 
         try:
+            # Use pre-classified type or let AI detect
+            if intent_result and intent_result.get('record_type'):
+                record_type = intent_result['record_type']
+                print(f"  → 使用意图识别结果: {record_type}", flush=True)
+            else:
+                detection = self.parser.detect_record_type(text)
+                record_type = detection['record_type']
+                confidence = detection['confidence']
+                print(f"  → AI 检测: {record_type} (置信度: {confidence:.2f})", flush=True)
+
+                if confidence < 0.6:
+                    return "❓ 不太确定这是什么类型的记录\n\n请明确说明是财务、健康、工作还是休闲记录"
+
+            # Call corresponding parser (keep existing logic)
             if record_type == "finance":
                 print(f"  → 调用 AI 解析财务记录...", flush=True)
                 record = await service.add_finance_from_text(text)
                 icon = "💰" if record.type == "income" else "💸"
                 result = f"✅ 已添加：{icon} {record.description or record.category or ''} ¥{record.amount}"
-                print(f"  ✓ AI 解析成功:", flush=True)
-                print(f"    - 类型: {record.type}", flush=True)
-                print(f"    - 金额: ¥{record.amount}", flush=True)
-                print(f"    - 描述: {record.description or record.category or ''}", flush=True)
+                print(f"  ✓ AI 解析成功", flush=True)
                 return result
 
             elif record_type == "health":
@@ -582,32 +713,25 @@ class FeishuEventHandler:
                 record = await service.add_health_from_text(text)
                 sleep_info = f"{record.sleep_hours}h" if record.sleep_hours else "N/A"
                 result = f"✅ 已添加：😴 睡眠 {sleep_info} - {record.sleep_quality or 'N/A'}"
-                print(f"  ✓ AI 解析成功:", flush=True)
-                print(f"    - 睡眠时长: {sleep_info}", flush=True)
-                print(f"    - 睡眠质量: {record.sleep_quality or 'N/A'}", flush=True)
+                print(f"  ✓ AI 解析成功", flush=True)
                 return result
 
             elif record_type == "work":
                 print(f"  → 调用 AI 解析工作记录...", flush=True)
                 record = await service.add_work_from_text(text)
                 result = f"✅ 已添加：💼 {record.task_name} ({record.duration_hours}h)"
-                print(f"  ✓ AI 解析成功:", flush=True)
-                print(f"    - 任务: {record.task_name}", flush=True)
-                print(f"    - 时长: {record.duration_hours}h", flush=True)
+                print(f"  ✓ AI 解析成功", flush=True)
                 return result
 
             elif record_type == "leisure":
                 print(f"  → 调用 AI 解析休闲记录...", flush=True)
                 record = await service.add_leisure_from_text(text)
                 result = f"✅ 已添加：🎮 {record.activity} ({record.duration_hours}h)"
-                print(f"  ✓ AI 解析成功:", flush=True)
-                print(f"    - 活动: {record.activity}", flush=True)
-                print(f"    - 时长: {record.duration_hours}h", flush=True)
+                print(f"  ✓ AI 解析成功", flush=True)
                 return result
 
             else:
-                print(f"  ✗ 无法识别记录类型", flush=True)
-                return "❓ 无法识别记录类型\n\n请尝试：\n• 今天花了50块买午饭\n• 昨晚睡了8小时\n• 今天工作了4小时完成开发\n• 看了2小时电影"
+                return "❓ 无法识别记录类型"
 
         except Exception as e:
             print(f"  ✗ AI 解析失败: {e}", flush=True)
@@ -684,28 +808,66 @@ class FeishuEventHandler:
                 return record_type
         return None
 
+    # ============================================================================
+    # FALLBACK METHODS - Legacy keyword-based matching (used when AI fails)
+    # ============================================================================
+
+    async def _fallback_handler(self, service: RecordService, text: str) -> str:
+        """
+        Fallback to traditional keyword matching.
+
+        Args:
+            service: RecordService instance
+            text: Input text
+
+        Returns:
+            Response message
+        """
+        # Use original keyword-based logic
+        if self._is_query_intent(text):
+            return await self._fallback_query(service.user_id, text)
+        else:
+            return await self.handle_record_by_service(service, text)
+
+    async def _fallback_query(self, user_id: int, query: str) -> str:
+        """
+        Traditional query handling (fallback).
+
+        Args:
+            user_id: User ID
+            query: Query text
+
+        Returns:
+            Query result
+        """
+        parsed = self._parse_query_intent(query)
+        return await self._execute_query(user_id, parsed)
+
     def _get_help_message(self) -> str:
         """Get help message."""
-        return """🤖 个人记忆助手
+        return """🤖 个人记忆助手 - AI 驱动的自然语言交互
 
-📝 记录数据（直接输入）：
+📝 记录数据（纯自然语言）：
 • 今天花了50块买午饭
-• 昨晚睡了8小时
-• 今天工作了4小时
+• 昨晚睡了8小时，睡得很好
+• 今天工作了4小时，完成用户认证模块
 • 看了2小时电影
 
-🔍 查询数据（自然语言）：
-• 查询本周花费
-• 看看今天的工作记录
-• 昨天睡了多少小时
-• 上个月在餐饮上花了多少钱
+🔍 查询数据（支持复杂查询）：
+• 查询本周财务记录
+• 工作超过4小时的任务
+• 本月餐饮和交通总支出
+• 睡眠质量为优的天数
+• 今天都做了什么
 
 📋 快捷命令：
 • /daily - 今日报告
 • /weekly - 本周报告
 • /monthly - 本月报告
 • /list - 最近记录
-• /help - 帮助信息"""
+• /help - 帮助信息
+
+💡 提示：完全支持自然语言，无需记忆命令格式！"""
 
     async def _generate_daily_report(self, user_id: int) -> str:
         """Generate daily report."""

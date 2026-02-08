@@ -1,0 +1,41 @@
+Determine which type of record the user is adding.
+
+Input: {text}
+
+Respond ONLY with a valid JSON object (no markdown, no code blocks, no additional text):
+{{
+  "record_type": "finance" or "health" or "work" or "leisure",
+  "confidence": 0.0-1.0,
+  "reasoning": "brief explanation"
+}}
+
+Classification:
+- finance: Money transactions (花了, 买了, 支付, 收入, 工资, 赚, 付钱)
+- health: Sleep, exercise, mood (睡了, 睡眠, 心情, 运动, 锻炼, 健康)
+- work: Tasks, projects (工作, 完成, 开发, 写, 修复, 任务, 开会)
+- leisure: Entertainment, hobbies (玩, 看, 听, 电影, 游戏, 阅读, 逛街)
+
+Examples:
+Input: "今天花了50块买午饭"
+Output: {{"record_type": "finance", "confidence": 0.98, "reasoning": "Money spending"}}
+
+Input: "昨晚睡了8小时"
+Output: {{"record_type": "health", "confidence": 0.95, "reasoning": "Sleep data"}}
+
+Input: "今天工作了8小时，完成了用户认证模块"
+Output: {{"record_type": "work", "confidence": 0.98, "reasoning": "Work task completion"}}
+
+Input: "看了2小时电影"
+Output: {{"record_type": "leisure", "confidence": 0.95, "reasoning": "Entertainment activity"}}
+
+Input: "收入5000块"
+Output: {{"record_type": "finance", "confidence": 0.97, "reasoning": "Money income"}}
+
+Input: "心情不错"
+Output: {{"record_type": "health", "confidence": 0.90, "reasoning": "Mood tracking"}}
+
+Input: "完成了前端开发"
+Output: {{"record_type": "work", "confidence": 0.96, "reasoning": "Work completion"}}
+
+Input: "玩了游戏"
+Output: {{"record_type": "leisure", "confidence": 0.94, "reasoning": "Gaming activity"}}

@@ -32,25 +32,19 @@ class UserRepository(BaseRepository[User]):
         """
         Get existing user or create new one by Feishu ID.
 
+        NOTE: All Feishu users are mapped to the same default user (ID=1)
+        to ensure data consistency across CLI and Feishu bot.
+
         Args:
-            feishu_user_id: Feishu user ID
-            username: Optional username (for new users)
+            feishu_user_id: Feishu user ID (not used, always returns ID=1)
+            username: Optional username (not used)
 
         Returns:
-            User instance
+            User instance (always returns user ID 1)
         """
-        # Try to get existing user
-        user = self.get_by_feishu_id(feishu_user_id)
-        if user:
-            return user
-
-        # Create new user
-        username = username or f"feishu_{feishu_user_id[:8]}"
-        user = User(feishu_user_id=feishu_user_id, username=username)
-        self.db.add(user)
-        self.db.commit()
-        self.db.refresh(user)
-        return user
+        # Always return the default user (ID=1) for consistency
+        # This ensures that records added via Feishu are visible in CLI
+        return self.get_or_create_default()
 
     def get_or_create_default(self) -> User:
         """

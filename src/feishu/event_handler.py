@@ -25,7 +25,7 @@ def create_event_handler(db: Session):
         Args:
             data: Message event data from SDK
         """
-        print(f"🔍 [DEBUG] Event received, type: {type(data)}", flush=True)
+        print(f"🔍 [DEBUG] Event received, type: {type(data).__name__}", flush=True)
         try:
             # Access through data.event (not data directly)
             event_data = data.event
@@ -66,8 +66,10 @@ def create_event_handler(db: Session):
                 text=text
             )
 
-            # Send reply
-            if response_text:
+            # Send reply (only if not duplicate)
+            if response_text is None:
+                print(f"⚠️ 重复消息，跳过回复", flush=True)
+            elif response_text:
                 print(f"📫 [发送回复] 发送到飞书...", flush=True)
                 # Import here to avoid circular import
                 from src.feishu.client import LarkAPIClient
@@ -95,8 +97,20 @@ def create_event_handler(db: Session):
             except Exception:
                 pass
 
+    def on_message_read(data: lark.im.v1.P2ImMessageMessageReadV1):
+        """Handle message read event (ignore it).
+
+        Args:
+            data: Message read event data from SDK
+        """
+        print(f"📖 [DEBUG] Message read event received (ignoring), type: {type(data).__name__}", flush=True)
+        # Simply ignore message read events - we don't need to process them
+        return
+
     # Build and return event dispatcher handler
     # Note: APP_ID and APP_SECRET are set in ws.Client, not here
     return lark.EventDispatcherHandler.builder(
         "", ""  # Empty strings - credentials are in ws.Client
-    ).register_p2_im_message_receive_v1(on_message_received).build()
+    ).register_p2_im_message_receive_v1(on_message_received) \
+     .register_p2_im_message_message_read_v1(on_message_read) \
+     .build()

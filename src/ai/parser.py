@@ -106,3 +106,66 @@ class TextParser:
         formatted_prompt = prompt.format(text=text, today=self._format_date(record_date))
 
         return self.ai.parse(formatted_prompt, context={})
+
+    def classify_intent(self, text: str) -> Dict[str, Any]:
+        """
+        Use AI to classify user intent.
+
+        Args:
+            text: User input text
+
+        Returns:
+            {
+                "intent": "add_record" | "query",
+                "record_type": "finance" | "health" | "work" | "leisure" | null,
+                "confidence": 0.0-1.0,
+                "reasoning": "str"
+            }
+        """
+        prompt = self._load_prompt("classify_intent.txt")
+        formatted_prompt = prompt.format(text=text, today=self._format_date(date.today()))
+        return self.ai.parse(formatted_prompt, context={})
+
+    def detect_record_type(self, text: str) -> Dict[str, Any]:
+        """
+        Use AI to detect record type.
+
+        Args:
+            text: User input text
+
+        Returns:
+            {
+                "record_type": "finance" | "health" | "work" | "leisure",
+                "confidence": 0.0-1.0,
+                "reasoning": "str"
+            }
+        """
+        prompt = self._load_prompt("detect_record_type.txt")
+        formatted_prompt = prompt.format(text=text)
+        return self.ai.parse(formatted_prompt, context={})
+
+    def generate_query_sql(self, text: str, user_id: int, schema: str) -> Dict[str, Any]:
+        """
+        Use AI to generate SQL query.
+
+        Args:
+            text: User query text
+            user_id: User ID
+            schema: Database schema documentation
+
+        Returns:
+            {
+                "sql": "SELECT ...",
+                "explanation": "str",
+                "chart_type": "table" | "bar" | "line" | "pie" | null,
+                "summary": "str"
+            }
+        """
+        prompt = self._load_prompt("generate_query_sql.txt")
+        formatted_prompt = prompt.format(
+            text=text,
+            user_id=user_id,
+            today=self._format_date(date.today()),
+            schema=schema
+        )
+        return self.ai.parse(formatted_prompt, context={})
