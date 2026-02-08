@@ -7,6 +7,7 @@ from typing import Any, Dict
 from dataclasses import dataclass
 from collections import deque
 import hashlib
+import threading
 
 from sqlalchemy.orm import Session
 
@@ -27,7 +28,7 @@ nest_asyncio.apply()
 # ============================================================================
 
 class MessageDeduplicator:
-    """Prevent processing duplicate messages within a time window."""
+    """Thread-safe message deduplicator to prevent duplicate processing."""
 
     def __init__(self, window_seconds: int = 10, max_size: int = 1000):
         """
@@ -40,6 +41,7 @@ class MessageDeduplicator:
         self.window_seconds = window_seconds
         self.max_size = max_size
         self.message_hashes = deque()  # List of (hash, timestamp)
+        self.lock = threading.Lock()  # Thread safety for concurrent access
 
     def _hash_message(self, sender_id: str, text: str) -> str:
         """Generate hash for message deduplication."""
@@ -48,7 +50,7 @@ class MessageDeduplicator:
 
     def is_duplicate(self, sender_id: str, text: str) -> bool:
         """
-        Check if message is a duplicate.
+        Check if message is a duplicate (thread-safe).
 
         Args:
             sender_id: Sender ID
@@ -60,24 +62,25 @@ class MessageDeduplicator:
         message_hash = self._hash_message(sender_id, text)
         now = datetime.now()
 
-        # Clean old hashes
-        cutoff_time = now - timedelta(seconds=self.window_seconds)
-        while self.message_hashes and self.message_hashes[0][1] < cutoff_time:
-            self.message_hashes.popleft()
+        with self.lock:  # Ensure thread-safe access
+            # Clean old hashes
+            cutoff_time = now - timedelta(seconds=self.window_seconds)
+            while self.message_hashes and self.message_hashes[0][1] < cutoff_time:
+                self.message_hashes.popleft()
 
-        # Check if hash exists in window
-        for existing_hash, _ in self.message_hashes:
-            if existing_hash == message_hash:
-                # Simply log and skip, no other logic
-                print(f"⚠️  重复消息，已跳过 (2分钟内)", flush=True)
-                return True
+            # Check if hash exists in window
+            for existing_hash, _ in self.message_hashes:
+                if existing_hash == message_hash:
+                    # Simply log and skip, no other logic
+                    print(f"⚠️  重复消息，已跳过 (2分钟内)", flush=True)
+                    return True
 
-        # Add new hash
-        self.message_hashes.append((message_hash, now))
+            # Add new hash
+            self.message_hashes.append((message_hash, now))
 
-        # Prevent unlimited growth
-        if len(self.message_hashes) > self.max_size:
-            self.message_hashes.popleft()
+            # Prevent unlimited growth
+            if len(self.message_hashes) > self.max_size:
+                self.message_hashes.popleft()
 
         return False
 
