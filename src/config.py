@@ -6,11 +6,19 @@ from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+def get_project_root() -> Path:
+    """Get the project root directory."""
+    # Start from the current file and go up to find project root
+    current_file = Path(__file__).resolve()
+    # src/config.py -> src -> project root
+    return current_file.parent.parent
+
+
 class Settings(BaseSettings):
     """Application settings."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=str(get_project_root() / ".env"),
         env_file_encoding="utf-8",
         case_sensitive=False,
         extra="ignore",
