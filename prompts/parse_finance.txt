@@ -1,10 +1,15 @@
-Parse the following text into a finance record. Extract the type (income/expense), amount, primary_category, secondary_category, description, payment_method, merchant, and date.
+Parse the following text into finance record(s). Extract the type (income/expense), amount, primary_category, secondary_category, description, payment_method, merchant, and date.
 
 Text: {text}
 
-IMPORTANT: Respond ONLY with a raw JSON object. Do NOT wrap it in markdown code blocks. Do NOT add any explanatory text. The response must start with "{{" and end with "}}".
+CRITICAL RULES:
+1. If the text contains MULTIPLE transactions (separated by commas, "和", "以及", etc.), return a JSON ARRAY with multiple objects
+2. If the text describes a SINGLE transaction, return a single JSON object
+3. Respond ONLY with raw JSON. Do NOT wrap it in markdown code blocks. Do NOT add any explanatory text.
+4. For multiple transactions, start with "[" and end with "]"
+5. For single transaction, start with "{{" and end with "}}"
 
-Required JSON format (exactly match this structure):
+Single record JSON format:
 {{
   "type": "income or expense",
   "amount": number (e.g., 50.00),
@@ -37,16 +42,33 @@ Rules:
 - Extract merchant/shop name if mentioned
 - Set is_recurring to true if this is a recurring payment (monthly bills, subscriptions, etc.)
 - Extract relevant tags from the text
+- IMPORTANT: Each separate expense/transaction must be a separate record in the array
 
 Examples:
+
 Input: "今天午餐花了50块在XX餐厅，用微信支付的"
 Output: {{"type": "expense", "amount": 50.00, "primary_category": "餐饮", "secondary_category": "午餐", "description": "XX餐厅午餐", "payment_method": "微信", "merchant": "XX餐厅", "is_recurring": false, "tags": ["午餐"], "record_date": "{today}"}}
 
 Input: "地铁8块钱"
 Output: {{"type": "expense", "amount": 8.00, "primary_category": "交通", "secondary_category": "地铁", "description": "地铁", "payment_method": null, "merchant": null, "is_recurring": false, "tags": ["地铁", "通勤"], "record_date": "{today}"}}
 
+Input: "今天打麻将输了185块，打羽毛球花了40块，中午吃饭花了12块，坐地铁花了8.5块"
+Output: [
+  {{"type": "expense", "amount": 185.00, "primary_category": "娱乐", "secondary_category": null, "description": "打麻将输钱", "payment_method": null, "merchant": null, "is_recurring": false, "tags": ["麻将", "娱乐"], "record_date": "{today}"}},
+  {{"type": "expense", "amount": 40.00, "primary_category": "娱乐", "secondary_category": null, "description": "打羽毛球", "payment_method": null, "merchant": null, "is_recurring": false, "tags": ["运动", "羽毛球"], "record_date": "{today}"}},
+  {{"type": "expense", "amount": 12.00, "primary_category": "餐饮", "secondary_category": "午餐", "description": "中午吃饭", "payment_method": null, "merchant": null, "is_recurring": false, "tags": ["午餐"], "record_date": "{today}"}},
+  {{"type": "expense", "amount": 8.50, "primary_category": "交通", "secondary_category": "地铁", "description": "坐地铁", "payment_method": null, "merchant": null, "is_recurring": false, "tags": ["地铁", "通勤"], "record_date": "{today}"}}
+]
+
 Input: "发了10000块工资"
 Output: {{"type": "income", "amount": 10000.00, "primary_category": "收入", "secondary_category": "工资", "description": "工资", "payment_method": null, "merchant": null, "is_recurring": true, "tags": ["工资", "月度收入"], "record_date": "{today}"}}
 
 Input: "房租2000，每月扣款"
 Output: {{"type": "expense", "amount": 2000.00, "primary_category": "住房", "secondary_category": "房租", "description": "每月房租", "payment_method": null, "merchant": null, "is_recurring": true, "tags": ["房租", "月度固定支出"], "record_date": "{today}"}}
+
+Input: "早餐10块，地铁5块，午餐35块"
+Output: [
+  {{"type": "expense", "amount": 10.00, "primary_category": "餐饮", "secondary_category": "早餐", "description": "早餐", "payment_method": null, "merchant": null, "is_recurring": false, "tags": ["早餐"], "record_date": "{today}"}},
+  {{"type": "expense", "amount": 5.00, "primary_category": "交通", "secondary_category": "地铁", "description": "地铁", "payment_method": null, "merchant": null, "is_recurring": false, "tags": ["地铁", "通勤"], "record_date": "{today}"}},
+  {{"type": "expense", "amount": 35.00, "primary_category": "餐饮", "secondary_category": "午餐", "description": "午餐", "payment_method": null, "merchant": null, "is_recurring": false, "tags": ["午餐"], "record_date": "{today}"}}
+]

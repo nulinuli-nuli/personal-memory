@@ -1,9 +1,9 @@
 """Finance record repository."""
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from typing import List, Optional
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, func, String, cast, Integer
 from sqlalchemy.orm import Session
 
 from src.core.models import FinanceRecord
@@ -217,4 +217,118 @@ class FinanceRepository(BaseRepository[FinanceRecord]):
                 "total": float(amount),
             }
             for (pri_cat, sec_cat, type_), amount in summary.items()
+        ]
+
+    def get_aggregated_data(
+        self,
+        user_id: int,
+        start_date: date,
+        end_date: date,
+        group_by: str,
+        metric: str = "sum",
+        record_type: str | None = None,
+        primary_categories: List[str] | None = None,
+        secondary_categories: List[str] | None = None,
+        time_granularity: str | None = None,
+    ) -> List[dict]:
+        """
+        Get aggregated finance data for chart rendering.
+
+        Args:
+            user_id: User ID
+            start_date: Start date
+            end_date: End date
+            group_by: Field to group by (primary_category, secondary_category, date, type, payment_method)
+            metric: Aggregation metric (sum, count, avg)
+            record_type: Filter by record type (income/expense)
+            primary_categories: Filter by primary categories
+            secondary_categories: Filter by secondary categories
+            time_granularity: Time granularity for date grouping (day, week, month, year)
+
+        Returns:
+            List of aggregated data points with label and value
+        """
+        # Build conditions
+        conditions = [
+            FinanceRecord.user_id == user_id,
+            FinanceRecord.record_date >= start_date,
+            FinanceRecord.record_date <= end_date,
+        ]
+
+        if record_type and record_type != "both":
+            conditions.append(FinanceRecord.type == record_type)
+        if primary_categories:
+            conditions.append(FinanceRecord.primary_category.in_(primary_categories))
+        if secondary_categories:
+            conditions.append(FinanceRecord.secondary_category.in_(secondary_categories))
+
+        # Build grouping column based on group_by parameter
+        if group_by == "date":
+            if time_granularity == "day":
+                group_column = FinanceRecord.record_date
+            elif time_granularity == "week":
+                # SQLite week grouping - get Monday of each week
+                days_since_monday = func.cast(
+                    func.strftime('%w', FinanceRecord.record_date),
+                    Integer
+                )
+                group_column = func.date(
+                    FinanceRecord.record_date,
+                    '-' + func.cast(days_since_monday, String) + ' days'
+                )
+            elif time_granularity == "month":
+                # SQLite month grouping
+                group_column = func.date(FinanceRecord.record_date, 'start of month')
+            elif time_granularity == "year":
+                # SQLite year grouping
+                group_column = func.date(FinanceRecord.record_date, 'start of year')
+            else:
+                group_column = FinanceRecord.record_date
+        elif group_by == "primary_category":
+            group_column = FinanceRecord.primary_category
+        elif group_by == "secondary_category":
+            group_column = func.coalesce(FinanceRecord.secondary_category, "未分类")
+        elif group_by == "type":
+            group_column = FinanceRecord.type
+        elif group_by == "payment_method":
+            group_column = func.coalesce(FinanceRecord.payment_method, "未分类")
+        else:
+            group_column = FinanceRecord.primary_category
+
+        # Build aggregation function
+        if metric == "sum":
+            agg_func = func.sum(FinanceRecord.amount)
+        elif metric == "count":
+            agg_func = func.count(FinanceRecord.id)
+        else:  # avg
+            agg_func = func.avg(FinanceRecord.amount)
+
+        # Build and execute query
+        query = (
+            select(
+                group_column.label("group_key"),
+                agg_func.label("value")
+            )
+            .where(and_(*conditions))
+            .group_by(group_column)
+        )
+
+        # Add ordering based on group_by type
+        if group_by == "date":
+            query = query.order_by(group_column)
+        elif group_by in ("primary_category", "secondary_category"):
+            query = query.order_by(agg_func.desc())
+        elif group_by == "type":
+            # Order income before expense
+            query = query.order_by(group_column.desc())
+
+        result = self.db.execute(query)
+
+        # Format results
+        return [
+            {
+                "label": str(row.group_key),
+                "value": float(row.value) if row.value is not None else 0.0,
+            }
+            for row in result.all()
         ]

@@ -25,18 +25,22 @@ def add(text: str = typer.Argument(..., help="Natural language description of th
             # Run async function in sync context
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            record = loop.run_until_complete(service.add_finance_from_text(text))
+            result = loop.run_until_complete(service.add_finance_from_text(text))
             loop.close()
 
-            # Display result
-            type_icon = "💰" if record.type == "income" else "💸"
-            category_display = f"{record.primary_category}"
-            if record.secondary_category:
-                category_display += f" > {record.secondary_category}"
-            console.print(
-                f"{type_icon} [green]Successfully added[/green]: "
-                f"{record.type} {record.amount}元 - {record.description or category_display}"
-            )
+            # Handle multiple records
+            records = result if isinstance(result, list) else [result]
+
+            # Display results
+            for record in records:
+                type_icon = "💰" if record.type == "income" else "💸"
+                category_display = f"{record.primary_category}"
+                if record.secondary_category:
+                    category_display += f" > {record.secondary_category}"
+                console.print(
+                    f"{type_icon} [green]Successfully added[/green]: "
+                    f"{record.type} {record.amount}元 - {record.description or category_display}"
+                )
     except PersonalMemoryError as e:
         console.print(f"[red]Error:[/red] {e}")
         raise typer.Exit(1)

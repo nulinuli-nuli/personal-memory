@@ -70,33 +70,42 @@ class RecordService:
         except Exception as e:
             raise AIServiceError(f"Failed to parse text: {str(e)}")
 
-        # Validate parsed data
-        if parsed.get("type") not in ["income", "expense"]:
-            raise InvalidInputError("Invalid record type. Must be 'income' or 'expense'.")
+        # Handle multiple records (AI may return a list)
+        records = parsed if isinstance(parsed, list) else [parsed]
 
-        amount = Decimal(str(parsed.get("amount", 0)))
-        if amount <= 0:
-            raise InvalidInputError("Amount must be positive.")
+        created_records = []
+        for record_data in records:
+            # Validate parsed data
+            if record_data.get("type") not in ["income", "expense"]:
+                raise InvalidInputError("Invalid record type. Must be 'income' or 'expense'.")
 
-        record_date_str = parsed.get("record_date")
-        if record_date_str:
-            from datetime import datetime
-            record_date = datetime.strptime(record_date_str, "%Y-%m-%d").date()
+            amount = Decimal(str(record_data.get("amount", 0)))
+            if amount <= 0:
+                raise InvalidInputError("Amount must be positive.")
 
-        return self.finance_repo.create(
-            user_id=self.user_id,
-            type=parsed["type"],
-            amount=amount,
-            primary_category=parsed.get("primary_category", "其他"),
-            secondary_category=parsed.get("secondary_category"),
-            description=parsed.get("description"),
-            payment_method=parsed.get("payment_method"),
-            merchant=parsed.get("merchant"),
-            is_recurring=parsed.get("is_recurring", False),
-            tags=parsed.get("tags"),
-            raw_text=text,
-            record_date=record_date or date.today(),
-        )
+            record_date_str = record_data.get("record_date")
+            if record_date_str:
+                from datetime import datetime
+                record_date = datetime.strptime(record_date_str, "%Y-%m-%d").date()
+
+            created = self.finance_repo.create(
+                user_id=self.user_id,
+                type=record_data["type"],
+                amount=amount,
+                primary_category=record_data.get("primary_category", "其他"),
+                secondary_category=record_data.get("secondary_category"),
+                description=record_data.get("description"),
+                payment_method=record_data.get("payment_method"),
+                merchant=record_data.get("merchant"),
+                is_recurring=record_data.get("is_recurring", False),
+                tags=record_data.get("tags"),
+                raw_text=text,
+                record_date=record_date or date.today(),
+            )
+            created_records.append(created)
+
+        # Return the first record for backward compatibility, or all records
+        return created_records[0] if len(created_records) == 1 else created_records
 
     async def add_health_from_text(self, text: str, record_date: date | None = None):
         """

@@ -5,7 +5,7 @@ import sys
 import typer
 from rich.console import Console
 
-from src.cli import finance, health, work, leisure, learning, social, goal, report
+from src.cli import finance, health, work, leisure, learning, social, goal, report, chart
 from src.config import settings
 from src.core.database import init_db
 
@@ -104,6 +104,7 @@ app.add_typer(learning.app, name="learning", help="Learning tracking")
 app.add_typer(social.app, name="social", help="Social tracking")
 app.add_typer(goal.app, name="goal", help="Goal tracking")
 app.add_typer(report.app, name="report", help="Generate reports")
+app.add_typer(chart.app, name="chart", help="Generate financial charts")
 
 
 if __name__ == "__main__":

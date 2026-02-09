@@ -225,3 +225,18 @@ class TextParser:
         )
 
         return self.ai.parse(formatted_prompt, context={})
+
+    def parse_chart_request(self, text: str) -> Dict[str, Any]:
+        """
+        Parse chart generation request from natural language.
+
+        Args:
+            text: User's chart request in natural language
+
+        Returns:
+            Parsed chart configuration as dictionary
+        """
+        prompt = self._load_prompt("parse_chart_request.txt")
+        formatted_prompt = prompt.format(text=text, today=self._format_date(date.today()))
+
+        return self.ai.parse(formatted_prompt, context={})

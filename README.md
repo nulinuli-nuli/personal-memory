@@ -11,6 +11,7 @@ A lightweight personal data recording and management platform powered by AI natu
 - 💼 **Work Logging**: Track tasks, hours, and achievements
 - 🎮 **Leisure Activities**: Log free time activities and enjoyment levels
 - 📊 **Reports**: Generate daily, weekly, and monthly summaries
+- 📈 **Chart Visualization**: Generate interactive charts with natural language
 - 🤖 **Feishu Bot Integration**: Add and query data via Feishu with natural language
 
 ## Installation
@@ -149,6 +150,47 @@ pm report monthly
 # Report for a specific date
 pm report daily 2025-01-15
 ```
+
+### Chart Commands 📈
+
+Generate beautiful charts with natural language descriptions:
+
+```bash
+# View chart examples
+pm chart examples
+
+# Generate a pie chart for expense categories
+pm chart generate "画一个饼图显示最近30天的支出分类占比"
+
+# Generate a bar chart comparing income and expenses
+pm chart generate "用柱状图比较最近3个月的收入和支出"
+
+# Generate a line chart for daily spending trend
+pm chart generate "显示本周每天的消费趋势折线图"
+
+# Group expenses by category
+pm chart generate "最近7天支出按分类统计"
+
+# Output options
+pm chart generate "支出饼图" --format window   # Popup window (default)
+pm chart generate "支出饼图" --format html     # Open in browser
+pm chart generate "支出饼图" --format png      # Export as image
+pm chart generate "支出统计" -o custom_name    # Custom filename
+```
+
+**Supported Chart Types:**
+- 🥧 **Pie Chart** - Category distribution/percentages
+- 📊 **Bar Chart** - Comparisons, rankings
+- 📈 **Line Chart** - Trends over time
+- 📉 **Area Chart** - Cumulative trends
+- 📊 **Stacked Bar** - Grouped comparisons
+
+**Features:**
+- Natural language chart description
+- Auto-detection of time ranges (today, this week, this month, last X days, etc.)
+- Flexible filtering by category, type, payment method
+- Display in popup window or browser
+- Export to PNG image
 
 ## Feishu Bot Integration
 
@@ -328,6 +370,8 @@ personal-memory/
 │   ├── ai/
 │   │   ├── parser.py        # Text parser
 │   │   └── providers.py     # AI provider abstraction
+│   ├── chart/               # Chart generation module
+│   │   └── generator.py     # Plotly/Matplotlib chart generator
 │   └── utils/               # Utilities
 ├── prompts/                 # AI prompt templates
 ├── data/                    # Database storage

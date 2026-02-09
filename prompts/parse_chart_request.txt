@@ -1,0 +1,104 @@
+Parse the user's request into a structured chart configuration for financial data visualization.
+
+User Request: {text}
+TODAY: {today}
+
+CRITICAL: Respond ONLY with a raw JSON object. Do NOT wrap it in markdown code blocks. Do NOT add any explanatory text. The response must start with "{{" and end with "}}".
+
+Required JSON format:
+{{
+  "chart_type": "bar" | "line" | "pie" | "area" | "stacked_bar" | "scatter",
+  "time_range": {{
+    "start_date": "YYYY-MM-DD or null",
+    "end_date": "YYYY-MM-DD or null",
+    "relative_range": "today" | "yesterday" | "this_week" | "last_week" | "this_month" | "last_month" | "last_X_days" | "last_X_weeks" | "last_X_months" | null,
+    "X": number or null  // For last_X_* patterns (e.g., 30 for last_30_days)
+  }},
+  "filters": {{
+    "type": "income" | "expense" | "both" | null,
+    "primary_categories": ["category1", "category2"] or null,
+    "secondary_categories": ["subcategory1", "subcategory2"] or null,
+    "payment_methods": ["method1", "method2"] or null,
+    "min_amount": number or null,
+    "max_amount": number or null
+  }},
+  "aggregation": {{
+    "dimension": "primary_category" | "secondary_category" | "date" | "payment_method" | "type",
+    "metric": "sum" | "count" | "avg"
+  }},
+  "grouping": {{
+    "by": "primary_category" | "secondary_category" | "date" | "payment_method" | "type" | "none",
+    "time_granularity": "day" | "week" | "month" | "year" | null
+  }},
+  "chart_title": "Descriptive title for the chart",
+  "x_axis_label": "X-axis label",
+  "y_axis_label": "Y-axis label",
+  "color_scheme": "category" | "type" | "sequential" | null,
+  "sort_by": "value" | "label" | "date" | null,
+  "sort_order": "asc" | "desc" | null,
+  "limit": number or null  // Top N items for categorical charts
+}}
+
+Chart Type Mapping (User Intent -> chart_type):
+- "饼图" | "占比" | "比例" | "分布" -> "pie"
+- "柱状图" | "柱图" | "对比" | "排名" -> "bar"
+- "折线图" | "趋势" | "变化" | "走势" -> "line"
+- "面积图" | "堆叠" | "累积" -> "area" or "stacked_bar"
+- "散点图" | "分布" -> "scatter"
+
+Time Range Extraction Rules:
+- "今天" | "当日" -> {{"relative_range": "today", "X": null}}
+- "昨天" -> {{"relative_range": "yesterday", "X": null}}
+- "本周" | "这周" -> {{"relative_range": "this_week", "X": null}}
+- "上周" -> {{"relative_range": "last_week", "X": null}}
+- "本月" | "这个月" -> {{"relative_range": "this_month", "X": null}}
+- "上月" | "上个月" -> {{"relative_range": "last_month", "X": null}}
+- "最近X天" | "过去X天" -> {{"relative_range": "last_X_days", "X": X}}
+- "最近X周" | "过去X周" -> {{"relative_range": "last_X_weeks", "X": X}}
+- "最近X个月" | "过去X个月" -> {{"relative_range": "last_X_months", "X": X}}
+
+Filter Extraction:
+- "收入" | "进账" -> {{"type": "income"}}
+- "支出" | "花费" | "消费" -> {{"type": "expense"}}
+- "收支" | "收入和支出" -> {{"type": "both"}}
+- "餐饮和交通" -> {{"primary_categories": ["餐饮", "交通"]}}
+- "微信支付" | "支付宝" -> {{"payment_methods": ["微信"] or ["支付宝"]}}
+
+Aggregation & Grouping Logic:
+- For pie/bar charts showing category breakdown:
+  - grouping.by: "primary_category" or "secondary_category"
+  - aggregation.dimension: same as grouping.by
+  - aggregation.metric: "sum"
+- For line charts showing trends:
+  - grouping.by: "date"
+  - grouping.time_granularity: "day" or "week" or "month"
+  - aggregation.dimension: "date"
+- For comparing income vs expense:
+  - grouping.by: "type"
+  - aggregation.dimension: "type"
+
+Default Values (when not specified):
+- chart_type: "bar"
+- relative_range: "last_X_days", X: 30
+- filters.type: "expense" (default to showing expenses)
+- aggregation.metric: "sum"
+- sort_by: "value", sort_order: "desc"
+
+Available Primary Categories: ["餐饮", "交通", "购物", "娱乐", "住房", "医疗", "教育", "收入"]
+
+Examples:
+
+Input: "画一个饼图显示最近30天的支出分类占比"
+Output: {{"chart_type": "pie", "time_range": {{"relative_range": "last_X_days", "start_date": null, "end_date": null, "X": 30}}, "filters": {{"type": "expense", "primary_categories": null, "secondary_categories": null, "payment_methods": null, "min_amount": null, "max_amount": null}}, "aggregation": {{"dimension": "primary_category", "metric": "sum"}}, "grouping": {{"by": "primary_category", "time_granularity": null}}, "chart_title": "最近30天支出分类占比", "x_axis_label": "分类", "y_axis_label": "金额", "color_scheme": "category", "sort_by": "value", "sort_order": "desc", "limit": 10}}
+
+Input: "用柱状图比较最近3个月的收入和支出"
+Output: {{"chart_type": "bar", "time_range": {{"relative_range": "last_X_months", "start_date": null, "end_date": null, "X": 3}}, "filters": {{"type": "both", "primary_categories": null, "secondary_categories": null, "payment_methods": null, "min_amount": null, "max_amount": null}}, "aggregation": {{"dimension": "type", "metric": "sum"}}, "grouping": {{"by": "type", "time_granularity": "month"}}, "chart_title": "最近3个月收入与支出对比", "x_axis_label": "月份", "y_axis_label": "金额", "color_scheme": "type", "sort_by": "date", "sort_order": "asc", "limit": null}}
+
+Input: "显示本周每天的消费趋势折线图"
+Output: {{"chart_type": "line", "time_range": {{"relative_range": "this_week", "start_date": null, "end_date": null, "X": null}}, "filters": {{"type": "expense", "primary_categories": null, "secondary_categories": null, "payment_methods": null, "min_amount": null, "max_amount": null}}, "aggregation": {{"dimension": "date", "metric": "sum"}}, "grouping": {{"by": "date", "time_granularity": "day"}}, "chart_title": "本周每日消费趋势", "x_axis_label": "日期", "y_axis_label": "支出金额", "color_scheme": null, "sort_by": "date", "sort_order": "asc", "limit": null}}
+
+Input: "餐饮和交通这两类的支出对比"
+Output: {{"chart_type": "bar", "time_range": {{"relative_range": "last_X_days", "start_date": null, "end_date": null, "X": 30}}, "filters": {{"type": "expense", "primary_categories": ["餐饮", "交通"], "secondary_categories": null, "payment_methods": null, "min_amount": null, "max_amount": null}}, "aggregation": {{"dimension": "primary_category", "metric": "sum"}}, "grouping": {{"by": "primary_category", "time_granularity": null}}, "chart_title": "餐饮与交通支出对比", "x_axis_label": "分类", "y_axis_label": "金额", "color_scheme": "category", "sort_by": "value", "sort_order": "desc", "limit": null}}
+
+Input: "本月每周的收入趋势"
+Output: {{"chart_type": "line", "time_range": {{"relative_range": "this_month", "start_date": null, "end_date": null, "X": null}}, "filters": {{"type": "income", "primary_categories": null, "secondary_categories": null, "payment_methods": null, "min_amount": null, "max_amount": null}}, "aggregation": {{"dimension": "date", "metric": "sum"}}, "grouping": {{"by": "date", "time_granularity": "week"}}, "chart_title": "本月每周收入趋势", "x_axis_label": "周", "y_axis_label": "收入金额", "color_scheme": null, "sort_by": "date", "sort_order": "asc", "limit": null}}
