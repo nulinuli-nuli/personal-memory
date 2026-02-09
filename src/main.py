@@ -83,7 +83,7 @@ def serve():
 
     except ImportError:
         console.print("[red]✗[/red] lark-oapi 未安装！")
-        console.print("请运行: [cyan]poetry install[/cyan]")
+        console.print("请运行: [cyan]pip install lark-oapi[/cyan]")
         raise typer.Exit(1)
     except KeyboardInterrupt:
         console.print("\n[yellow]服务已停止[/yellow]")

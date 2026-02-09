@@ -10,28 +10,26 @@ A lightweight personal data recording and management platform powered by AI natu
 - 😴 **Health Monitoring**: Record sleep, mood, and wellness metrics
 - 💼 **Work Logging**: Track tasks, hours, and achievements
 - 🎮 **Leisure Activities**: Log free time activities and enjoyment levels
+- 📚 **Learning Records**: Track study activities, reading progress, and skill development
+- 🎯 **Goal Management**: Set goals and track progress with milestones
+- 👥 **Social Activities**: Record social interactions, gatherings, and relationships
 - 📊 **Reports**: Generate daily, weekly, and monthly summaries
 - 🤖 **Feishu Bot Integration**: Add and query data via Feishu with natural language
 
 ## Installation
 
-### Using Poetry (Recommended)
-
 ```bash
-# Install dependencies
-poetry install
+# Install in editable mode
+pip install -e .
+
+# Install development dependencies (optional)
+pip install -e ".[dev]"
 
 # Create .env file from example
 cp .env.example .env
 
 # Edit .env with your configuration
 # Important: Set AI_PROVIDER and AI_API_KEY
-```
-
-### Using pip
-
-```bash
-pip install -e .
 ```
 
 ## Configuration
@@ -62,7 +60,15 @@ DATABASE_URL=sqlite:///data/database.db
 pm init
 ```
 
-### 2. Add your first records
+### 2. Start the bot service (optional)
+
+If you want to use Feishu bot for easy data tracking:
+
+```bash
+pm serve
+```
+
+### 3. Add your first records
 
 ```bash
 # Finance
@@ -76,6 +82,16 @@ pm work add "今天工作8小时，完成了用户认证模块"
 
 # Leisure
 pm leisure add "看了2小时电影"
+
+# Learning
+pm learning add "读了2小时《深度工作》，完成了第一章"
+
+# Goal
+pm goal add "今年要读12本书"
+pm goal progress 1 1  # Update goal ID 1 with +1 progress
+
+# Social
+pm social add "和朋友聚餐，花了200块，很愉快"
 ```
 
 ### 3. View reports
@@ -132,6 +148,51 @@ pm leisure add "看了2小时电影"
 
 # List recent records
 pm leisure list --days 7
+```
+
+### Learning Commands
+
+```bash
+# Add a learning record
+pm learning add "读了2小时《深度工作》，完成了第一章"
+
+# List recent records
+pm learning list --days 7
+
+# Show statistics by type
+pm learning stats --days 30
+```
+
+### Goal Commands
+
+```bash
+# Add a goal
+pm goal add "今年要读12本书"
+
+# List all goals
+pm goal list
+
+# List active goals only
+pm goal list --status active
+
+# Update goal progress
+pm goal progress 1 1                    # Add +1 to goal ID 1
+
+# Show goal statistics
+pm goal stats
+```
+
+### Social Commands
+
+```bash
+# Add a social record
+pm social add "和朋友聚餐，花了200块，很愉快"
+
+# List recent records
+pm social list --days 7
+
+# Show statistics
+pm social stats --days 30
 ```
 
 ### Report Commands
@@ -205,6 +266,22 @@ Once configured, you can interact with the bot directly in Feishu:
 📝 Add leisure record:
 "看了2小时电影"
 ✓ Response: ✅ 已添加：🎮 电影 (2h)
+
+📝 Add learning record:
+"读了2小时《深度工作》"
+✓ Response: ✅ 已添加：📚 《深度工作》 (2h)
+
+📝 Add social record:
+"和朋友聚餐，花了200块，很愉快"
+✓ Response: ✅ 已添加：👥 朋友-聚餐 (¥200, ⭐5)
+
+📝 Add goal:
+"今年要读12本书"
+✓ Response: ✅ 已添加：🎯 读书目标 (12本)
+
+📝 Update goal progress:
+"目标进度 +1"
+✓ Response: ✅ 已更新：📈 目标进度 1/12 (8.3%)
 ```
 
 #### Smart Query (Natural Language)
@@ -228,6 +305,21 @@ Once configured, you can interact with the bot directly in Feishu:
 🔍 Complex query:
 "上个月在餐饮上花了多少钱"
 📊 Response: 📊 上个月餐饮支出：¥1,234.56
+
+🔍 Query learning records:
+"最近学了什么"
+📊 Response: 📚 学习记录 (最近7天)
+- 《深度工作》 - 2h
+
+🔍 Query social activities:
+"最近有哪些社交活动"
+📊 Response: 👥 社交记录 (最近7天)
+总计时长: 5h | 总花费: ¥300
+
+🔍 Query goals:
+"我的目标进度怎么样"
+📊 Response: 🎯 目标概览
+活跃目标: 3个 | 已完成: 1个
 ```
 
 #### Quick Commands
@@ -247,6 +339,7 @@ Once configured, you can interact with the bot directly in Feishu:
 - 🎯 **Keyword Detection**: Recognizes query intents from context ("查询", "看看", "多少", etc.)
 - 🔍 **Flexible Queries**: Ask questions in your own words
 - 📱 **Multi-user Support**: Each user gets their own data space
+- 📚 **All Record Types**: Support for finance, health, work, leisure, learning, social, and goals
 
 ## Natural Language Examples
 
@@ -277,6 +370,27 @@ Once configured, you can interact with the bot directly in Feishu:
 - "和朋友打了3小时桌球，很开心"
 - "逛了1小时公园"
 - "玩了一下午游戏"
+
+### Learning
+
+- "读了2小时《深度工作》，完成了第一章"
+- "学Python编程，3小时，完成了基础语法"
+- "看在线课程，学会了递归算法"
+- "背单词1小时，记住了50个"
+
+### Goal
+
+- "今年要读12本书"
+- "目标：每月跑步50公里"
+- "计划今年存5万块钱"
+- "要在三个月内学会弹吉他"
+
+### Social
+
+- "和朋友聚餐，花了200块，很愉快"
+- "和同事打了2小时桌球"
+- "和家人视频聊天1小时"
+- "参加了同学聚会，见到了10个老同学"
 
 ## AI Provider Support
 
@@ -320,18 +434,48 @@ personal-memory/
 │   │   ├── models.py        # SQLAlchemy models
 │   │   ├── schemas.py       # Pydantic schemas
 │   │   ├── database.py      # Database connection
-│   │   └── exceptions.py    # Custom exceptions
+│   │   ├── exceptions.py    # Custom exceptions
+│   │   └── categories.py    # Category definitions
 │   ├── services/
-│   │   └── record_service.py # Business logic
+│   │   ├── record_service.py # Business logic
+│   │   └── query_service.py  # Query service
 │   ├── repositories/        # Data access layer
+│   │   ├── base.py          # Base repository
+│   │   ├── finance_repo.py  # Finance repository
+│   │   ├── health_repo.py   # Health repository
+│   │   ├── work_repo.py     # Work repository
+│   │   ├── leisure_repo.py  # Leisure repository
+│   │   ├── learning_repo.py # Learning repository
+│   │   ├── social_repo.py   # Social repository
+│   │   ├── goal_repo.py     # Goal repository
+│   │   └── user_repo.py     # User repository
 │   ├── cli/                 # CLI commands
 │   ├── ai/
 │   │   ├── parser.py        # Text parser
 │   │   └── providers.py     # AI provider abstraction
-│   └── utils/               # Utilities
+│   └── feishu/              # Feishu bot integration
+│       ├── client.py        # WebSocket client
+│       ├── event_handler.py # Event handler
+│       └── handlers.py      # Message handlers
 ├── prompts/                 # AI prompt templates
 ├── data/                    # Database storage
 └── tests/                   # Tests
+```
+
+## System Commands
+
+```bash
+# Initialize database
+pm init
+
+# Reset database (WARNING: deletes all data)
+pm reset
+
+# Show version
+pm version
+
+# Start Feishu bot service
+pm serve
 ```
 
 ## Development
@@ -339,14 +483,20 @@ personal-memory/
 ### Running Tests
 
 ```bash
-poetry run pytest
+pytest
 ```
 
 ### Code Formatting
 
 ```bash
-poetry run black src/
-poetry run ruff check src/
+black src/
+ruff check src/
+```
+
+### Type Checking
+
+```bash
+mypy src/
 ```
 
 ## License
