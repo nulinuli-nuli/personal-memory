@@ -242,7 +242,7 @@ pm serve
 
 **That's it!** No need for webhooks, ngrok, or public URLs.
 
-For detailed setup instructions, see [FEISHU_SETUP.md](FEISHU_SETUP.md) or [FEISHU_QUICKSTART.md](FEISHU_QUICKSTART.md).
+For detailed setup instructions, see [FEISHU_SETUP.md](FEISHU_SETUP.md)
 
 ### Usage Examples
 
