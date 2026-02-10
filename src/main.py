@@ -1,13 +1,22 @@
 """Main CLI entry point for Personal Memory."""
-import subprocess
+import asyncio
 import sys
-
+import os
 import typer
 from rich.console import Console
 
-from src.cli import finance, health, work, leisure, learning, social, goal, report
-from src.config import settings
-from src.core.database import init_db
+# Fix Windows console encoding issue
+if sys.platform == "win32":
+    import codecs
+    if sys.stdout.encoding != "utf-8":
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if sys.stderr.encoding != "utf-8":
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    # Set environment variable for UTF-8 mode
+    os.environ["PYTHONIOENCODING"] = "utf-8"
+
+from src.shared.config import settings
+from src.shared.database import init_db, reset_db
 
 app = typer.Typer(help="Personal Memory - Track your life with AI")
 console = Console()
@@ -34,7 +43,6 @@ def reset():
             console.print("Cancelled.")
             raise typer.Exit(0)
 
-        from src.core.database import reset_db
         reset_db()
         console.print("[green]✓[/green] Database reset successfully!")
     except Exception as e:
@@ -45,15 +53,46 @@ def reset():
 @app.command()
 def version():
     """Show version information"""
-    console.print("Personal Memory v0.1.0")
+    console.print("Personal Memory v2.0.0 - AI-Powered Personal Data Tracking")
+    console.print("\n主要命令:")
+    console.print("  pm chat <文本>     智能对话，自动识别你的需求")
+    console.print("  pm init           初始化数据库")
+    console.print("  pm reset          重置数据库（清空所有数据）")
+    console.print("  pm plugin list-plugins   查看所有可用插件")
+    console.print("  pm help           显示帮助信息")
+
+
+@app.command(name="help")
+def help_cmd():
+    """显示帮助信息和使用示例"""
+    console.print("\n[bold]Personal Memory - AI驱动的个人数据追踪[/bold]\n")
+    console.print("使用 [cyan]pm chat[/cyan] 命令，用自然语言与系统交互：\n")
+    console.print("[yellow]财务记录示例：[/yellow]")
+    console.print('  pm chat "今天花了50块钱买午饭"')
+    console.print('  pm chat "收到工资5000元"')
+    console.print('  pm chat "今天买了杯咖啡，18块"')
+    console.print("")
+    console.print("[yellow]工作记录示例：[/yellow]")
+    console.print('  pm chat "今天工作了8小时，完成了用户认证模块"')
+    console.print('  pm chat "下午开会2小时，讨论项目进度"')
+    console.print("")
+    console.print("[yellow]查询数据示例：[/yellow]")
+    console.print('  pm chat "查询今天的财务记录"')
+    console.print('  pm chat "这周工作了多少小时"')
+    console.print('  pm chat "看看最近的消费情况"')
+    console.print("")
+    console.print("[yellow]管理命令：[/yellow]")
+    console.print("  pm init              初始化数据库")
+    console.print("  pm reset             重置数据库（清空数据）")
+    console.print("  pm plugin list-plugins  查看可用插件")
+    console.print("")
+    console.print("[dim]提示: 系统会自动识别你的意图，调用合适的插件处理请求。[/dim]")
 
 
 @app.command()
 def serve():
     """
-    Start the Feishu bot service (using SDK long-connection).
-
-    No public URL required - works locally!
+    Start the Feishu bot service.
 
     Make sure to configure FEISHU_APP_ID and FEISHU_APP_SECRET
     environment variables before starting.
@@ -71,14 +110,12 @@ def serve():
     console.print(f"  App ID: {settings.feishu_app_id}")
     console.print(f"  Database: {settings.database_url}")
 
-    # Create WebSocket client
+    # Import and start the Feishu client
     try:
-        from src.feishu.client import LarkWSClient
-        client = LarkWSClient()
+        from src.access.feishu.client import LarkBotClient
 
+        client = LarkBotClient()
         console.print("\n[yellow]提示:[/yellow] 服务运行中，按 Ctrl+C 停止\n")
-
-        # Start connection (blocking)
         client.start()
 
     except ImportError:
@@ -95,15 +132,81 @@ def serve():
         raise typer.Exit(1)
 
 
-# Register sub-commands
-app.add_typer(finance.app, name="finance", help="Finance tracking")
-app.add_typer(health.app, name="health", help="Health tracking")
-app.add_typer(work.app, name="work", help="Work tracking")
-app.add_typer(leisure.app, name="leisure", help="Leisure tracking")
-app.add_typer(learning.app, name="learning", help="Learning tracking")
-app.add_typer(social.app, name="social", help="Social tracking")
-app.add_typer(goal.app, name="goal", help="Goal tracking")
-app.add_typer(report.app, name="report", help="Generate reports")
+# Main command - AI-powered intelligent routing
+@app.command()
+def chat(text: str):
+    """智能对话 - 自动识别并处理你的需求（添加记录、查询数据、统计分析等）"""
+    from src.access.cli.adapter import CLIAdapter
+    from src.access.base import AccessRequest
+    from rich.markdown import Markdown
+
+    async def _process():
+        adapter = CLIAdapter()
+        await adapter.initialize_plugins()
+        request = AccessRequest(
+            user_id="1",
+            input_text=text,
+            channel="cli",
+            context={},
+            metadata={}
+        )
+        return await adapter.router.route(request)
+
+    response = asyncio.run(_process())
+
+    if not response.success:
+        console.print(f"[red]错误: {response.error}[/red]")
+        raise typer.Exit(1)
+
+    # Print summary
+    if response.message:
+        console.print(f"\n{response.message}")
+
+    # Print Markdown if available
+    if response.metadata and "markdown" in response.metadata:
+        console.print(Markdown(response.metadata["markdown"]))
+
+
+# Plugin management commands
+plugin_app = typer.Typer(help="插件管理")
+app.add_typer(plugin_app, name="plugin")
+
+
+@plugin_app.command()
+def list_plugins():
+    """列出所有插件"""
+    from src.access.cli.adapter import CLIAdapter
+
+    async def _list():
+        adapter = CLIAdapter()
+        await adapter.initialize_plugins()
+        plugins = adapter.plugin_manager.list_plugins()
+
+        console.print("\n可用插件:")
+        for p in plugins:
+            console.print(f"  - {p['display_name']} ({p['name']}) v{p['version']}")
+            console.print(f"    {p['description']}")
+            console.print(f"    状态: {p['state']}")
+            console.print("")
+
+    asyncio.run(_list())
+
+
+@plugin_app.command()
+def reload(name: str):
+    """热重载插件"""
+    from src.access.cli.adapter import CLIAdapter
+
+    async def _reload():
+        adapter = CLIAdapter()
+        await adapter.initialize_plugins()
+        success = await adapter.plugin_manager.reload_plugin(name)
+        if success:
+            console.print(f"✓ 插件 '{name}' 重载成功")
+        else:
+            console.print(f"✗ 插件 '{name}' 重载失败", style="red")
+
+    asyncio.run(_reload())
 
 
 if __name__ == "__main__":

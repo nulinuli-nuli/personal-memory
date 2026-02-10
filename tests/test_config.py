@@ -1,40 +1,55 @@
 """Test configuration."""
 import os
+import pytest
 from pathlib import Path
 
 
 def test_project_structure():
-    """Test that all important files exist."""
+    """Test that all important files exist in the new architecture."""
     project_root = Path(__file__).parent.parent
 
     important_files = [
         "pyproject.toml",
         "README.md",
-        ".env.example",
         "src/main.py",
-        "src/config.py",
-        "src/core/models.py",
-        "src/core/schemas.py",
-        "src/core/database.py",
-        "src/ai/parser.py",
-        "src/ai/providers.py",
-        "src/services/record_service.py",
-        "src/cli/finance.py",
-        "src/cli/health.py",
-        "src/cli/work.py",
-        "src/cli/leisure.py",
-        "src/cli/report.py",
+        # Shared
+        "src/shared/config.py",
+        "src/shared/models.py",
+        "src/shared/schemas.py",
+        "src/shared/database.py",
+        # Core plugin system
+        "src/core/plugin/interface.py",
+        "src/core/plugin/base.py",
+        "src/core/plugin/manager.py",
+        # Plugins
+        "src/core/plugins/finance/plugin.py",
+        "src/core/plugins/work/plugin.py",
+        # Routing
+        "src/routing/router.py",
+        # Access layer
+        "src/access/base.py",
+        "src/access/cli/adapter.py",
+        "src/access/cli/commands.py",
+        # Storage
+        "src/storage/interfaces.py",
+        "src/storage/repositories/base.py",
+        "src/storage/repositories/finance_repo.py",
+        "src/storage/repositories/work_repo.py",
+        "src/storage/context/repository.py",
+        # Prompts
+        "prompts/router_decision.txt",
         "prompts/parse_finance.txt",
-        "prompts/parse_health.txt",
         "prompts/parse_work.txt",
-        "prompts/parse_leisure.txt",
     ]
 
+    missing_files = []
     for file_path in important_files:
         full_path = project_root / file_path
-        assert full_path.exists(), f"Missing file: {file_path}"
+        if not full_path.exists():
+            missing_files.append(file_path)
 
-    print("[OK] All project files exist")
+    if missing_files:
+        pytest.fail(f"Missing files: {', '.join(missing_files)}")
 
 
 def test_config_loading():
@@ -43,13 +58,11 @@ def test_config_loading():
     sys.path.insert(0, str(Path(__file__).parent.parent))
 
     try:
-        from src.config import settings
+        from src.shared.config import settings
         assert hasattr(settings, "ai_provider")
         assert hasattr(settings, "database_url")
-        print("[OK] Configuration loads successfully")
     except Exception as e:
-        print(f"[FAIL] Configuration loading failed: {e}")
-        raise
+        pytest.fail(f"Configuration loading failed: {e}")
 
 
 if __name__ == "__main__":
